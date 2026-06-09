@@ -26,9 +26,9 @@ IN1 = 16
 IN2 = 20
 
 # --- Demo thresholds ---
-TEMP_FORWARD = 28    # Above this -> FORWARD
-TEMP_REVERSE = 22    # Below this -> REVERSE
-# Between 22 and 28  -> OFF
+TEMP_FORWARD = 27    # Above this -> FORWARD  (warm sensor with fingers)
+TEMP_REVERSE = 24    # Below this -> REVERSE  (starts here at room temp ~23-24 C)
+# Between 24 and 27  -> OFF
 
 # --- Setup ---
 GPIO.setmode(GPIO.BCM)
@@ -80,9 +80,9 @@ def handle_motor():
 
 
 print("=== L293D 2-Pin Demo ===")
-print(f"  > {TEMP_FORWARD} C  --> FORWARD  (warm sensor with fingers)")
-print(f"  {TEMP_REVERSE} - {TEMP_FORWARD} C  --> OFF     (room temperature)")
-print(f"  < {TEMP_REVERSE} C  --> REVERSE  (blow on / cool the sensor)")
+print(f"  > {TEMP_FORWARD} C        --> FORWARD  (warm sensor with fingers)")
+print(f"  {TEMP_REVERSE} - {TEMP_FORWARD} C    --> OFF      (middle zone)")
+print(f"  < {TEMP_REVERSE} C        --> REVERSE  (starts here at room temp!)")
 print("========================")
 
 try:
