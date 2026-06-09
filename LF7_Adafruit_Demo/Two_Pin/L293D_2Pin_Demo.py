@@ -26,9 +26,9 @@ IN1 = 16
 IN2 = 20
 
 # --- Demo thresholds ---
-TEMP_FORWARD = 30    # Above this -> FORWARD
-TEMP_REVERSE = 25    # Below this -> REVERSE
-# Between 25 and 27  -> OFF (motor off below 30, reverse below 25)
+TEMP_FORWARD = 30    # Above this        -> FORWARD
+TEMP_OFF     = 27    # Below this        -> OFF
+TEMP_REVERSE = 25    # Below this        -> REVERSE
 
 # --- Setup ---
 GPIO.setmode(GPIO.BCM)
@@ -70,19 +70,23 @@ def handle_motor():
 
     if temp > TEMP_FORWARD:
         motor_forward()
-        print(f"Temp: {temp:.1f} C  -->  Motor FORWARD   (warm the sensor to stay here)")
-    elif temp < TEMP_REVERSE:
-        motor_reverse()
-        print(f"Temp: {temp:.1f} C  -->  Motor REVERSE   (cool the sensor to stay here)")
-    else:
+        print(f"Temp: {temp:.1f} C  -->  Motor FORWARD   (above {TEMP_FORWARD} C)")
+    elif temp > TEMP_OFF:
         motor_off()
-        print(f"Temp: {temp:.1f} C  -->  Motor OFF       (room temp zone {TEMP_REVERSE}-{TEMP_FORWARD} C)")
+        print(f"Temp: {temp:.1f} C  -->  Motor OFF       ({TEMP_OFF}-{TEMP_FORWARD} C zone)")
+    elif temp > TEMP_REVERSE:
+        motor_off()
+        print(f"Temp: {temp:.1f} C  -->  Motor OFF       ({TEMP_REVERSE}-{TEMP_OFF} C zone)")
+    else:
+        motor_reverse()
+        print(f"Temp: {temp:.1f} C  -->  Motor REVERSE   (below {TEMP_REVERSE} C)")
 
 
 print("=== L293D 2-Pin Demo ===")
-print(f"  > {TEMP_FORWARD} C       --> FORWARD  (warm sensor with fingers)")
-print(f"  {TEMP_REVERSE} - {TEMP_FORWARD} C   --> OFF      (middle zone)")
-print(f"  < {TEMP_REVERSE} C       --> REVERSE  (room temp triggers this)")
+print(f"  > {TEMP_FORWARD} C   --> FORWARD  (warm sensor with fingers)")
+print(f"  {TEMP_OFF} - {TEMP_FORWARD} C   --> OFF")
+print(f"  < {TEMP_OFF} C   --> OFF")
+print(f"  < {TEMP_REVERSE} C   --> REVERSE  (room temp starts here)")
 print("========================")
 
 try:
