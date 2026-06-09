@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # ============================================================
-# L298N — Full Demo (ENA PWM + IN1 + IN2)
+# L298N — Keyboard Demo (ENA PWM + IN1 + IN2)
 # ============================================================
 # Wiring:
 #   Pi GPIO 23  --> L298N ENA  (PWM speed control)
@@ -11,34 +11,35 @@
 #   L298N GND  --> GND (shared with Pi and Battery -)
 #   Remove ENA jumper on L298N module for PWM control
 #
-# Demo sequence (auto-cycles):
-#   1. FORWARD  SLOW   (40%)
-#   2. FORWARD  MEDIUM (70%)
-#   3. FORWARD  FAST   (100%)
-#   4. OFF
-#   5. REVERSE  SLOW   (40%)
-#   6. REVERSE  MEDIUM (70%)
-#   7. REVERSE  FAST   (100%)
-#   8. OFF
-#   ... repeats
+# Keys:
+#   F = FORWARD
+#   R = REVERSE
+#   + = Faster  (+10% speed)
+#   - = Slower  (-10% speed)
+#   S = STOP
+#   Q = Quit
 # ============================================================
 
-from time import sleep
 import RPi.GPIO as GPIO
 import signal
 import sys
+import tty
+import termios
 
 # --- Pins ---
-ENA = 23    # PWM speed control
-IN1 = 24    # Direction 1
-IN2 = 25    # Direction 2
+ENA = 23
+IN1 = 24
+IN2 = 25
 
-# --- PWM ---
-PWM_FREQ  = 1000   # Hz
-SLOW      = 40     # %
-MEDIUM    = 70     # %
-FAST      = 100    # %
-STEP_TIME = 3      # seconds per step
+# --- Speed settings ---
+PWM_FREQ  = 1000
+SPEED_STEP = 10
+MIN_SPEED  = 20
+MAX_SPEED  = 100
+
+# --- State ---
+current_speed     = 50
+current_direction = 'STOP'
 
 # --- Setup ---
 GPIO.setmode(GPIO.BCM)
@@ -56,51 +57,77 @@ def motor_forward(speed):
     GPIO.output(IN1, GPIO.HIGH)
     GPIO.output(IN2, GPIO.LOW)
     pwm.ChangeDutyCycle(speed)
-    print(f"  FORWARD  {speed}%")
 
 def motor_reverse(speed):
     GPIO.output(IN1, GPIO.LOW)
     GPIO.output(IN2, GPIO.HIGH)
     pwm.ChangeDutyCycle(speed)
-    print(f"  REVERSE  {speed}%")
 
-def motor_off():
+def motor_stop():
     pwm.ChangeDutyCycle(0)
     GPIO.output(IN1, GPIO.LOW)
     GPIO.output(IN2, GPIO.LOW)
-    print("  OFF")
+
+def apply_speed():
+    if current_direction == 'FORWARD':
+        motor_forward(current_speed)
+    elif current_direction == 'REVERSE':
+        motor_reverse(current_speed)
+
+def print_status():
+    bar = '#' * (current_speed // 5) + '-' * ((MAX_SPEED - current_speed) // 5)
+    print(f"\r  {current_direction:<8}  [{bar}]  {current_speed}%    ", end='', flush=True)
 
 def shutdown(sig, frame):
-    motor_off()
+    motor_stop()
     pwm.stop()
     GPIO.cleanup()
-    print("\nStopped")
+    print("\n\nStopped")
     sys.exit(0)
 
 signal.signal(signal.SIGINT,  shutdown)
 signal.signal(signal.SIGTERM, shutdown)
 
-# --- Demo sequence ---
-sequence = [
-    (motor_forward, SLOW),
-    (motor_forward, MEDIUM),
-    (motor_forward, FAST),
-    (motor_off,     None),
-    (motor_reverse, SLOW),
-    (motor_reverse, MEDIUM),
-    (motor_reverse, FAST),
-    (motor_off,     None),
-]
 
-print("=== L298N Full Demo ===")
-print(f"ENA=GPIO{ENA}  IN1=GPIO{IN1}  IN2=GPIO{IN2}")
-print(f"Cycling every {STEP_TIME} seconds. Ctrl+C to stop.")
-print("=======================")
+# --- Read single keypress ---
+def get_key():
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        return sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+# --- Main ---
+print("=== L298N Keyboard Demo ===")
+print("  F = Forward   R = Reverse")
+print("  + = Faster    - = Slower")
+print("  S = Stop      Q = Quit")
+print("===========================")
+print()
+print_status()
 
 while True:
-    for func, speed in sequence:
-        if speed is not None:
-            func(speed)
-        else:
-            func()
-        sleep(STEP_TIME)
+    key = get_key().upper()
+
+    if key == 'F':
+        current_direction = 'FORWARD'
+        apply_speed()
+    elif key == 'R':
+        current_direction = 'REVERSE'
+        apply_speed()
+    elif key == '+' or key == '=':
+        current_speed = min(MAX_SPEED, current_speed + SPEED_STEP)
+        apply_speed()
+    elif key == '-':
+        current_speed = max(MIN_SPEED, current_speed - SPEED_STEP)
+        apply_speed()
+    elif key == 'S':
+        current_direction = 'STOP'
+        motor_stop()
+    elif key == 'Q':
+        shutdown(None, None)
+
+    print_status()
