@@ -25,6 +25,8 @@
 
 from time import sleep
 import RPi.GPIO as GPIO
+import signal
+import sys
 from Adafruit_IO import Client, RequestError
 from ada_secrets import ada_user, ada_key, ada_feed
 
@@ -84,12 +86,15 @@ def handle_motor():
 
 
 # --- Main loop ---
-try:
-    while True:
-        handle_motor()
-        sleep(2)
-
-except KeyboardInterrupt:
+def shutdown(sig, frame):
     motor_off()
+    GPIO.cleanup()
+    print("\nStopped")
+    sys.exit(0)
 
-GPIO.cleanup()
+signal.signal(signal.SIGINT,  shutdown)
+signal.signal(signal.SIGTERM, shutdown)
+
+while True:
+    handle_motor()
+    sleep(2)

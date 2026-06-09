@@ -22,6 +22,8 @@
 
 from time import sleep
 import RPi.GPIO as GPIO
+import signal
+import sys
 from Adafruit_IO import Client, RequestError
 from ada_secrets import ada_user, ada_key, ada_feed
 
@@ -98,14 +100,19 @@ print(f"  {BAND_SLOW} - {BAND_MEDIUM} C  --> MEDIUM ({SPEED_MEDIUM}% PWM)  keep 
 print(f"  > {BAND_MEDIUM} C    --> FAST   ({SPEED_FAST}% PWM)  hold tight!")
 print("============================")
 
-try:
-    while True:
-        handle_motor()
-        sleep(2)
-
-except KeyboardInterrupt:
+def shutdown(sig, frame):
     set_speed(0)
+    pwm.stop()
+    GPIO.cleanup()
     print("\nStopped")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT,  shutdown)
+signal.signal(signal.SIGTERM, shutdown)
+
+while True:
+    handle_motor()
+    sleep(2)
 
 pwm.stop()
 GPIO.cleanup()
