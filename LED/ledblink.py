@@ -1,10 +1,13 @@
 from gpiozero import LED
-from signal import pause
+from time import sleep
 
 led = LED(23)
 
-led.blink()              # 1 second on, 1 second off (default)
-
-# led.blink(0.2, 0.2)   # faster: 0.2s on, 0.2s off
-
-pause()
+try:
+    while True:
+        led.on()
+        sleep(1)
+        led.off()
+        sleep(1)
+except KeyboardInterrupt:
+    led.close()

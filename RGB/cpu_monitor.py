@@ -13,4 +13,8 @@ def cpu_colour():
         yield (red_val, green_val, 0)
 
 RGB.source = cpu_colour()
-pause()
+
+try:
+    pause()
+except KeyboardInterrupt:
+    RGB.close()
