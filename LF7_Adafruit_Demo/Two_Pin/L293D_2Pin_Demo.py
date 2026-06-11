@@ -11,32 +11,29 @@
 #   L293D Pin 4+5 (GND) --> GND (shared with Pi and Battery -)
 #
 # DEMO Temperature Zones:
-#   temp > 28 C       --> FORWARD  (warm sensor with fingers)
-#   temp 22 - 28 C    --> OFF      (room temperature)
-#   temp < 22 C       --> REVERSE  (blow on sensor / cool it)
+#   temp > 30 C       --> FORWARD  (warm sensor with fingers)
+#   temp 25 - 30 C    --> OFF      (dead zone)
+#   temp < 25 C       --> REVERSE  (blow on sensor / cool it)
+#
+# Uses gpiozero (current recommended GPIO library for Raspberry Pi OS).
+# gpiozero handles pin setup and cleanup automatically.
 # ============================================================
 
+from gpiozero import OutputDevice
 from time import sleep
-import RPi.GPIO as GPIO
 import signal
 import sys
 from Adafruit_IO import Client, RequestError
 from ada_secrets import ada_user, ada_key, ada_feed
 
 # --- Pins ---
-IN1 = 16
-IN2 = 20
+IN1 = OutputDevice(16)
+IN2 = OutputDevice(20)
 
 # --- Demo thresholds ---
 TEMP_FORWARD = 30    # Above this        -> FORWARD
 TEMP_OFF     = 27    # Below this        -> OFF
 TEMP_REVERSE = 25    # Below this        -> REVERSE
-
-# --- Setup ---
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-GPIO.setup(IN1, GPIO.OUT)
-GPIO.setup(IN2, GPIO.OUT)
 
 aio = Client(ada_user, ada_key)
 
@@ -51,18 +48,18 @@ def read_temp():
 
 
 def motor_forward():
-    GPIO.output(IN1, GPIO.HIGH)
-    GPIO.output(IN2, GPIO.LOW)
+    IN1.on()
+    IN2.off()
 
 
 def motor_reverse():
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.HIGH)
+    IN1.off()
+    IN2.on()
 
 
 def motor_off():
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.LOW)
+    IN1.off()
+    IN2.off()
 
 
 def handle_motor():
@@ -84,18 +81,19 @@ def handle_motor():
         print(f"Temp: {temp:.1f} C  -->  Motor REVERSE   (below {TEMP_REVERSE} C)")
 
 
-print("=== L293D 2-Pin Demo ===")
-print(f"  > {TEMP_FORWARD} C   --> FORWARD  (warm sensor with fingers)")
-print(f"  {TEMP_OFF} - {TEMP_FORWARD} C   --> OFF")
-print(f"  < {TEMP_OFF} C   --> OFF")
-print(f"  < {TEMP_REVERSE} C   --> REVERSE  (room temp starts here)")
-print("========================")
-
-def shutdown(sig, frame):
+def shutdown(sig=None, frame=None):
     motor_off()
-    GPIO.cleanup()
+    IN1.close()
+    IN2.close()
     print("\nStopped")
     sys.exit(0)
+
+
+print("=== L293D 2-Pin Demo ===")
+print(f"  > {TEMP_FORWARD} C   --> FORWARD  (warm sensor with fingers)")
+print(f"  {TEMP_REVERSE} - {TEMP_FORWARD} C  --> OFF")
+print(f"  < {TEMP_REVERSE} C   --> REVERSE  (blow on / cool the sensor)")
+print("========================")
 
 signal.signal(signal.SIGINT,  shutdown)
 signal.signal(signal.SIGTERM, shutdown)

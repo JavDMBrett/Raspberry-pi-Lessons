@@ -12,25 +12,28 @@
 #
 # DEMO Speed Bands:
 #   temp < 25 C         --> OFF
-#   temp 25 - 28 C      --> SLOW  (~40% PWM)
-#   temp 28 - 31 C      --> MEDIUM (~70% PWM)
+#   temp 25 - 28 C      --> SLOW  (40% PWM)
+#   temp 28 - 31 C      --> MEDIUM (70% PWM)
 #   temp > 31 C         --> FAST  (100% PWM)
 #
 # Warm the sensor with your fingers to climb through the bands.
 # Watch the speed percentage on the terminal.
+#
+# Uses gpiozero (current recommended GPIO library for Raspberry Pi OS).
+# gpiozero handles pin setup, PWM and cleanup automatically.
 # ============================================================
 
+from gpiozero import OutputDevice, PWMLED
 from time import sleep
-import RPi.GPIO as GPIO
 import signal
 import sys
 from Adafruit_IO import Client, RequestError
 from ada_secrets import ada_user, ada_key, ada_feed
 
 # --- Pins ---
-EN  = 16    # Enable (PWM)
-IN1 = 20    # Direction 1
-IN2 = 21    # Direction 2
+EN  = PWMLED(16)        # Enable (PWM speed, 0.0-1.0)
+IN1 = OutputDevice(20)  # Direction 1 — held HIGH for the whole demo (forward only)
+IN2 = OutputDevice(21)  # Direction 2 — held LOW  for the whole demo
 
 # --- Demo speed bands ---
 BAND_OFF    = 25    # Below this -> OFF
@@ -38,27 +41,15 @@ BAND_SLOW   = 28    # Below this -> SLOW
 BAND_MEDIUM = 31    # Below this -> MEDIUM
                     # Above BAND_MEDIUM -> FAST
 
-SPEED_SLOW   = 40   # % PWM
-SPEED_MEDIUM = 70   # % PWM
-SPEED_FAST   = 100  # % PWM
-
-PWM_FREQ = 1000     # Hz
-
-# --- Setup ---
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-GPIO.setup(EN,  GPIO.OUT)
-GPIO.setup(IN1, GPIO.OUT)
-GPIO.setup(IN2, GPIO.OUT)
-
-pwm = GPIO.PWM(EN, PWM_FREQ)
-pwm.start(0)
-
-# Set direction to FORWARD for the whole demo
-GPIO.output(IN1, GPIO.HIGH)
-GPIO.output(IN2, GPIO.LOW)
+SPEED_SLOW   = 0.40  # 40% PWM
+SPEED_MEDIUM = 0.70  # 70% PWM
+SPEED_FAST   = 1.00  # 100% PWM
 
 aio = Client(ada_user, ada_key)
+
+# Set direction to FORWARD for the whole demo
+IN1.on()
+IN2.off()
 
 
 def read_temp():
@@ -70,8 +61,8 @@ def read_temp():
         return None
 
 
-def set_speed(percent):
-    pwm.ChangeDutyCycle(max(0, min(100, percent)))
+def set_speed(value):
+    EN.value = max(0.0, min(1.0, value))
 
 
 def handle_motor():
@@ -84,28 +75,32 @@ def handle_motor():
         print(f"Temp: {temp:.1f} C  -->  OFF             (below {BAND_OFF} C)")
     elif temp < BAND_SLOW:
         set_speed(SPEED_SLOW)
-        print(f"Temp: {temp:.1f} C  -->  SLOW   {SPEED_SLOW}%  (warm a little more)")
+        print(f"Temp: {temp:.1f} C  -->  SLOW   {SPEED_SLOW*100:.0f}%  (warm a little more)")
     elif temp < BAND_MEDIUM:
         set_speed(SPEED_MEDIUM)
-        print(f"Temp: {temp:.1f} C  -->  MEDIUM {SPEED_MEDIUM}%  (getting warmer!)")
+        print(f"Temp: {temp:.1f} C  -->  MEDIUM {SPEED_MEDIUM*100:.0f}%  (getting warmer!)")
     else:
         set_speed(SPEED_FAST)
-        print(f"Temp: {temp:.1f} C  -->  FAST   {SPEED_FAST}%  (maximum speed!)")
+        print(f"Temp: {temp:.1f} C  -->  FAST   {SPEED_FAST*100:.0f}%  (maximum speed!)")
+
+
+def shutdown(sig=None, frame=None):
+    set_speed(0)
+    IN1.off()
+    IN2.off()
+    EN.close()
+    IN1.close()
+    IN2.close()
+    print("\nStopped")
+    sys.exit(0)
 
 
 print("=== L293D 3-Pin PWM Demo ===")
 print(f"  < {BAND_OFF} C    --> OFF")
-print(f"  {BAND_OFF} - {BAND_SLOW} C  --> SLOW   ({SPEED_SLOW}% PWM)  warm sensor gently")
-print(f"  {BAND_SLOW} - {BAND_MEDIUM} C  --> MEDIUM ({SPEED_MEDIUM}% PWM)  keep warming")
-print(f"  > {BAND_MEDIUM} C    --> FAST   ({SPEED_FAST}% PWM)  hold tight!")
+print(f"  {BAND_OFF} - {BAND_SLOW} C  --> SLOW   ({SPEED_SLOW*100:.0f}% PWM)  warm sensor gently")
+print(f"  {BAND_SLOW} - {BAND_MEDIUM} C  --> MEDIUM ({SPEED_MEDIUM*100:.0f}% PWM)  keep warming")
+print(f"  > {BAND_MEDIUM} C    --> FAST   ({SPEED_FAST*100:.0f}% PWM)  hold tight!")
 print("============================")
-
-def shutdown(sig, frame):
-    set_speed(0)
-    pwm.stop()
-    GPIO.cleanup()
-    print("\nStopped")
-    sys.exit(0)
 
 signal.signal(signal.SIGINT,  shutdown)
 signal.signal(signal.SIGTERM, shutdown)
@@ -113,6 +108,3 @@ signal.signal(signal.SIGTERM, shutdown)
 while True:
     handle_motor()
     sleep(2)
-
-pwm.stop()
-GPIO.cleanup()

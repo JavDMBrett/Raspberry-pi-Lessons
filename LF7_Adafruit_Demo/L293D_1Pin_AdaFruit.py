@@ -14,24 +14,24 @@
 #   Enable HIGH = Motor ON (forward only)
 #   Enable LOW  = Motor OFF
 #   No direction control, no speed control.
+#
+# Uses gpiozero (current recommended GPIO library for Raspberry Pi OS).
+# gpiozero handles pin setup and cleanup automatically.
 # ============================================================
 
+from gpiozero import OutputDevice
 from time import sleep
-import RPi.GPIO as GPIO
+import signal
+import sys
 from Adafruit_IO import Client, RequestError
 from ada_secrets import ada_user, ada_key, ada_feed
 
 # --- Pin ---
-EN = 16          # Enable pin -> motor on/off
+EN = OutputDevice(16)   # Enable pin -> motor on/off
 
 # --- Thresholds ---
 MAX_TEMP  = 30   # degrees C — motor turns ON above this
 HYSTERESE =  3   # degrees C — motor turns OFF below (MAX_TEMP - HYSTERESE)
-
-# --- Setup ---
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-GPIO.setup(EN, GPIO.OUT)
 
 aio = Client(ada_user, ada_key)
 
@@ -41,17 +41,17 @@ def read_temp():
         data = aio.receive(ada_feed)
         return float(data.value)
     except RequestError:
-        print("Adafruit IO: Feed nicht vorhanden")
+        print("Adafruit IO: Feed not found")
         return None
 
 
 def motor_on():
-    GPIO.output(EN, GPIO.HIGH)
+    EN.on()
     print("Motor ON")
 
 
 def motor_off():
-    GPIO.output(EN, GPIO.LOW)
+    EN.off()
     print("Motor OFF")
 
 
@@ -66,13 +66,16 @@ def handle_motor():
         motor_off()
 
 
-# --- Main loop ---
-try:
-    while True:
-        handle_motor()
-        sleep(2)
-
-except KeyboardInterrupt:
+def shutdown(sig=None, frame=None):
     motor_off()
+    EN.close()
+    print("\nStopped")
+    sys.exit(0)
 
-GPIO.cleanup()
+
+signal.signal(signal.SIGINT,  shutdown)
+signal.signal(signal.SIGTERM, shutdown)
+
+while True:
+    handle_motor()
+    sleep(2)

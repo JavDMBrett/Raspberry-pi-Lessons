@@ -11,44 +11,36 @@
 #   L293D Pin 4+5 (GND) --> GND (shared with Pi and Battery -)
 #
 # How it works:
-#   Enable pin uses PWM (0-100% duty cycle) to control speed.
+#   Enable pin uses PWM (0.0-1.0) to control speed.
 #   IN1/IN2 set direction (same truth table as 2-pin variant).
 #   Speed is proportional to how far above MAX_TEMP we are —
 #   the hotter it gets, the faster the motor runs.
 #
 # Speed mapping:
-#   At MAX_TEMP            --> MIN_SPEED (just starts turning)
+#   At MAX_TEMP              --> MIN_SPEED (just starts turning)
 #   At MAX_TEMP + TEMP_RANGE --> 100% speed
+#
+# Uses gpiozero (current recommended GPIO library for Raspberry Pi OS).
+# gpiozero handles pin setup, PWM and cleanup automatically.
 # ============================================================
 
+from gpiozero import OutputDevice, PWMLED
 from time import sleep
-import RPi.GPIO as GPIO
 import signal
 import sys
 from Adafruit_IO import Client, RequestError
 from ada_secrets import ada_user, ada_key, ada_feed
 
 # --- Pins ---
-EN  = 16    # Enable (PWM)
-IN1 = 20    # Direction 1
-IN2 = 21    # Direction 2
+EN  = PWMLED(16)        # Enable (PWM speed control, 0.0-1.0)
+IN1 = OutputDevice(20)  # Direction 1
+IN2 = OutputDevice(21)  # Direction 2
 
 # --- Thresholds ---
 MAX_TEMP   = 30     # Motor starts above this temperature
 HYSTERESE  =  3     # Motor stops below (MAX_TEMP - HYSTERESE)
 TEMP_RANGE =  5     # Degrees above MAX_TEMP to reach full speed
-MIN_SPEED  = 40     # Minimum PWM % to actually move the motor (overcome inertia)
-PWM_FREQ   = 1000   # Hz
-
-# --- Setup ---
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-GPIO.setup(EN,  GPIO.OUT)
-GPIO.setup(IN1, GPIO.OUT)
-GPIO.setup(IN2, GPIO.OUT)
-
-pwm = GPIO.PWM(EN, PWM_FREQ)
-pwm.start(0)  # Start with motor off
+MIN_SPEED  = 0.40   # Minimum speed (0.0-1.0) to actually move the motor
 
 aio = Client(ada_user, ada_key)
 
@@ -58,35 +50,34 @@ def read_temp():
         data = aio.receive(ada_feed)
         return float(data.value)
     except RequestError:
-        print("Adafruit IO: Feed nicht vorhanden")
+        print("Adafruit IO: Feed not found")
         return None
 
 
-def set_speed(percent):
-    """Set motor speed 0-100%. Below MIN_SPEED the motor won't turn."""
-    duty = max(0, min(100, percent))
-    pwm.ChangeDutyCycle(duty)
+def set_speed(value):
+    """Set motor speed 0.0-1.0."""
+    EN.value = max(0.0, min(1.0, value))
 
 
-def motor_forward(speed=100):
-    GPIO.output(IN1, GPIO.HIGH)
-    GPIO.output(IN2, GPIO.LOW)
+def motor_forward(speed=1.0):
+    IN1.on()
+    IN2.off()
     set_speed(speed)
-    print(f"Motor FORWARD @ {speed:.0f}%")
+    print(f"Motor FORWARD @ {speed * 100:.0f}%")
 
 
 def motor_off():
     set_speed(0)
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.LOW)
+    IN1.off()
+    IN2.off()
     print("Motor OFF")
 
 
 def calc_speed(temp):
-    """Map temperature above MAX_TEMP to a speed between MIN_SPEED and 100%."""
+    """Map temperature above MAX_TEMP to a speed between MIN_SPEED and 1.0."""
     excess = temp - MAX_TEMP
-    speed = MIN_SPEED + (excess / TEMP_RANGE) * (100 - MIN_SPEED)
-    return max(MIN_SPEED, min(100, speed))
+    speed = MIN_SPEED + (excess / TEMP_RANGE) * (1.0 - MIN_SPEED)
+    return max(MIN_SPEED, min(1.0, speed))
 
 
 def handle_motor():
@@ -95,19 +86,19 @@ def handle_motor():
         return
     print(f"Temp: {temp:.1f} C")
     if temp > MAX_TEMP:
-        speed = calc_speed(temp)
-        motor_forward(speed)
+        motor_forward(calc_speed(temp))
     elif temp < MAX_TEMP - HYSTERESE:
         motor_off()
 
 
-# --- Main loop ---
-def shutdown(sig, frame):
+def shutdown(sig=None, frame=None):
     motor_off()
-    pwm.stop()
-    GPIO.cleanup()
+    EN.close()
+    IN1.close()
+    IN2.close()
     print("\nStopped")
     sys.exit(0)
+
 
 signal.signal(signal.SIGINT,  shutdown)
 signal.signal(signal.SIGTERM, shutdown)

@@ -21,28 +21,25 @@
 #   Temp too high  --> Motor FORWARD (fan blows air)
 #   Temp too low   --> Motor OFF
 #   (Bonus demo)   --> Call motor_reverse() to show direction change
+#
+# Uses gpiozero (current recommended GPIO library for Raspberry Pi OS).
+# gpiozero handles pin setup and cleanup automatically.
 # ============================================================
 
+from gpiozero import OutputDevice
 from time import sleep
-import RPi.GPIO as GPIO
 import signal
 import sys
 from Adafruit_IO import Client, RequestError
 from ada_secrets import ada_user, ada_key, ada_feed
 
 # --- Pins ---
-IN1 = 16    # Direction pin 1
-IN2 = 20    # Direction pin 2
+IN1 = OutputDevice(16)   # Direction pin 1
+IN2 = OutputDevice(20)   # Direction pin 2
 
 # --- Thresholds ---
 MAX_TEMP  = 30
 HYSTERESE =  3
-
-# --- Setup ---
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-GPIO.setup(IN1, GPIO.OUT)
-GPIO.setup(IN2, GPIO.OUT)
 
 aio = Client(ada_user, ada_key)
 
@@ -52,25 +49,25 @@ def read_temp():
         data = aio.receive(ada_feed)
         return float(data.value)
     except RequestError:
-        print("Adafruit IO: Feed nicht vorhanden")
+        print("Adafruit IO: Feed not found")
         return None
 
 
 def motor_forward():
-    GPIO.output(IN1, GPIO.HIGH)
-    GPIO.output(IN2, GPIO.LOW)
+    IN1.on()
+    IN2.off()
     print("Motor FORWARD")
 
 
 def motor_reverse():
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.HIGH)
+    IN1.off()
+    IN2.on()
     print("Motor REVERSE")
 
 
 def motor_off():
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.LOW)
+    IN1.off()
+    IN2.off()
     print("Motor OFF")
 
 
@@ -85,12 +82,13 @@ def handle_motor():
         motor_off()
 
 
-# --- Main loop ---
-def shutdown(sig, frame):
+def shutdown(sig=None, frame=None):
     motor_off()
-    GPIO.cleanup()
+    IN1.close()
+    IN2.close()
     print("\nStopped")
     sys.exit(0)
+
 
 signal.signal(signal.SIGINT,  shutdown)
 signal.signal(signal.SIGTERM, shutdown)
