@@ -1,5 +1,3 @@
-# TEACHER ANSWER — do not distribute to students
-
 from gpiozero import TrafficLights
 from time import sleep
 from signal import pause
